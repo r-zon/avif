@@ -1,0 +1,7 @@
+^\.zig-cache$
+^\.zig-cache$
+^zig-out$
+^\.jj$
+\.tar\.gz$
+^LICENSE\.txt$
+^README\.md$

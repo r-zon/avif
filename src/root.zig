@@ -1,0 +1,287 @@
+const std = @import("std");
+const c = @import("c");
+const avif = @import("avif");
+const r = @import("r");
+const utils = @import("utils.zig");
+
+const copyAny = utils.copy;
+const copyFromLut = utils.copyFromLut;
+
+const PixelType = enum {
+    u8,
+    u16,
+};
+
+pub fn readAvif(src: r.Sexp, proto: r.Sexp, normalize_sexp: r.Sexp) callconv(.c) c.SEXP {
+    const log = std.log.scoped(.read);
+
+    const src_type = src.type();
+    log.debug("src_type={t}", .{src_type});
+    switch (src_type) {
+        .string, .raw => {},
+        else => r.err("Source must be a file path or a raw vector"),
+    }
+
+    var out_type = proto.type();
+    log.debug("out_type={t}", .{out_type});
+    switch (out_type) {
+        .raw, .real, .integer => {},
+        else => r.err("Output must be a raw, real, or integer vector"),
+    }
+
+    const normalize = blk: {
+        if (normalize_sexp.isLogical() and normalize_sexp.len() == 1) {
+            const element = normalize_sexp.logical()[0];
+            if (element != r.na(.logical))
+                break :blk element == 1;
+        }
+        r.err("Normalize argument must be a scalar logical");
+    };
+    log.debug("normalize={}", .{normalize});
+
+    if (normalize and out_type != .real) {
+        out_type = .real;
+        r.warn("Normalization turned on, output a real vector instead");
+    }
+
+    const decoder = avif.Decoder.init() catch |e|
+        r.err("Init decoder failed: %s", @errorName(e).ptr);
+    defer decoder.deinit();
+    const cpu_count = std.Thread.getCpuCount() catch blk: {
+        r.warn("Get the number of available logical CPU cores failed, multithreading disabled");
+        break :blk 1;
+    };
+    log.debug("cpu_count={d}", .{cpu_count});
+    decoder.ptr.maxThreads = @intCast(cpu_count);
+
+    log.debug("codec={s}", .{avif.codecName(decoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_DECODE)});
+
+    const src_len = src.len();
+    if (src_type == .string) {
+        const filename = blk: {
+            if (src_len == 1) {
+                const name = src.stringElement(0).toUtf8();
+                if (name[0] != 0)
+                    break :blk name;
+            }
+            r.err("Filename should not be empty");
+        };
+        if (decoder.setIoFile(filename)) |result|
+            r.err("Set file IO failed: %s", avif.resultToString(result));
+    } else {
+        if (src_len == 0)
+            r.err("Input source should not be empty");
+        const data = src.raw()[0..@intCast(src_len)];
+        if (decoder.setIoMemory(data)) |result|
+            r.err("Set memory IO failed: %s", avif.resultToString(result));
+    }
+
+    if (decoder.parse()) |result|
+        r.err("Parse failed: %s", avif.resultToString(result));
+
+    if (decoder.nextImage()) |result|
+        r.err("Get next image failed: %s", avif.resultToString(result));
+
+    const image: avif.Image = .{ .ptr = decoder.ptr.image };
+    const width, const height, const depth = blk: {
+        const img = image.ptr.*;
+        break :blk .{ img.width, img.height, img.depth };
+    };
+
+    const pixel_type: PixelType = if (depth > 8) .u16 else .u8;
+    log.debug("pixel_type={t}", .{pixel_type});
+
+    if (pixel_type == .u16 and out_type == .raw) {
+        out_type = if (normalize) .real else .integer;
+        r.warn("%dbpc detected, output %s instead", depth, @tagName(out_type).ptr);
+    }
+
+    var rgb: avif.RgbImage = .{};
+    rgb.setDefaults(image);
+    if (image.isOpaque()) {
+        rgb.inner.format = c.AVIF_RGB_FORMAT_RGB;
+        log.debug("Image is opaque, set to RGB", .{});
+    }
+
+    if (rgb.allocatePixels()) |result|
+        r.err("Allocate RGB pixels failed: %s", avif.resultToString(result));
+    defer rgb.freePixels();
+
+    if (image.toRgb(&rgb)) |result|
+        r.err("Convert from YUV failed: %s", avif.resultToString(result));
+
+    const channel_count = rgb.channelCount();
+    log.debug("width={d} height={d} channel_count={d}", .{ width, height, channel_count });
+
+    const plane_size = width * height;
+    const out_size = plane_size * channel_count;
+    const out = r.allocVector(out_type, out_size, .protected);
+    defer r.unprotect(1);
+
+    const pixels = rgb.inner.pixels;
+    const pixels_u8 = pixels[0..out_size];
+    const pixels_u16: []u16 = @ptrCast(@alignCast(pixels[0 .. out_size * 2]));
+    blk: switch (out_type) {
+        .raw => @memcpy(c.RAW(out), pixels_u8),
+        .integer => {
+            const buf = c.INTEGER(out)[0..out_size];
+            if (pixel_type == .u16)
+                copyAny(buf, pixels_u16)
+            else
+                copyAny(buf, pixels_u8);
+        },
+        .real => {
+            const buf = c.REAL(out)[0..out_size];
+
+            if (!normalize) {
+                if (pixel_type == .u8)
+                    copyAny(buf, pixels_u8)
+                else
+                    copyAny(buf, pixels_u16);
+                break :blk;
+            }
+
+            if (pixel_type == .u8)
+                break :blk copyFromLut(u8)(buf, pixels_u8);
+
+            const copy = switch (depth) {
+                10 => copyFromLut(u10),
+                12 => copyFromLut(u12),
+                // 16 => copyFromLut(u16),
+                else => break :blk {
+                    const max_int: f64 = (@as(u6, 1) << @intCast(depth)) - 1;
+                    const inv: f64 = 1.0 / max_int;
+                    for (buf, pixels_u16) |*i, j|
+                        i.* = j * inv;
+                },
+            };
+            copy(buf, pixels_u16);
+        },
+        // Checked before
+        else => unreachable,
+    }
+
+    const dim = r.allocVector(.integer, 3, .protected);
+    defer r.unprotect(1);
+    inline for (c.INTEGER(dim), .{ channel_count, width, height }) |*i, j|
+        i.* = @intCast(j);
+    _ = r.setAttribute(out, c.R_DimSymbol, dim);
+
+    const depth_sexp = r.allocScalar(.integer, @intCast(depth), .protected);
+    defer r.unprotect(1);
+    _ = r.setAttribute(out, r.install("depth"), depth_sexp);
+
+    // _ = r.setAttribute(out, r.install("normalized"), normalize_sexp.ptr);
+
+    return out;
+}
+
+pub fn writeAvif(src: r.Sexp, target: r.Sexp) callconv(.c) c.SEXP {
+    const log = std.log.scoped(.write);
+
+    const src_type = src.type();
+    log.debug("src_type={t}", .{src_type});
+    if (src_type != .raw)
+        r.err("Source must be a raw vector with dim (height, width, channel) set");
+    const src_dim: r.Sexp = .{ .ptr = r.getAttribute(src.ptr, c.R_DimSymbol) };
+    if (src_dim.isNull() or src_dim.len() != 3)
+        r.err("Source \"dim\" attribute (height, width, channel) required");
+
+    const target_type = target.type();
+    log.debug("target_type={t}", .{target_type});
+    const target_filename = blk: switch (target_type) {
+        .null => null,
+        .string => {
+            if (target.len() == 1) {
+                const name = target.stringElement(0).toUtf8();
+                if (name[0] != 0) {
+                    log.debug("target_filename={s}", .{name});
+                    break :blk name;
+                }
+            }
+            r.err("Target file path must a string scalar");
+        },
+        else => r.err("Target must be a null or a string scalar"),
+    };
+
+    const channel_count, const width, const height = blk: {
+        const int = src_dim.integer();
+        break :blk .{ int[0], int[1], int[2] };
+    };
+    log.debug("width={d} height={d} channel_count={d}", .{ width, height, channel_count });
+
+    var image = avif.Image.initWithOptions(.{ .width = @intCast(width), .height = @intCast(height), .depth = 8 }) catch |e|
+        r.err("Image init failed: %s", @errorName(e).ptr);
+    defer image.deinit();
+
+    var rgb: avif.RgbImage = .{};
+    rgb.setDefaults(image);
+    rgb.inner.format = switch (channel_count) {
+        3 => c.AVIF_RGB_FORMAT_RGB,
+        4 => c.AVIF_RGB_FORMAT_RGBA,
+        else => r.err("Unsupported channel count: %d", channel_count),
+    };
+
+    if (rgb.allocatePixels()) |result|
+        r.err("Allocate RGB pixels failed: %s", avif.resultToString(result));
+    defer rgb.freePixels();
+
+    const pixel_type: PixelType = if (rgb.inner.depth > 8) .u16 else .u8;
+    log.debug("pixel_type={t}", .{pixel_type});
+    if (pixel_type == .u8)
+        @memcpy(rgb.inner.pixels, src.raw()[0..@intCast(src.len())])
+    else
+        r.err("Unsupported pixel type: %s", @tagName(pixel_type).ptr);
+
+    if (image.toYuv(&rgb)) |result|
+        r.err("Convert from YUV failed: %s", avif.resultToString(result));
+
+    var encoder = avif.Encoder.init() catch |e|
+        r.err("Init encoder failed: %s", @errorName(e).ptr);
+    defer encoder.deinit();
+
+    const cpu_count = std.Thread.getCpuCount() catch blk: {
+        r.warn("Get the number of available logical CPU cores failed, multithreading disabled");
+        break :blk 1;
+    };
+    log.debug("cpu_count={d}", .{cpu_count});
+    encoder.ptr.maxThreads = @intCast(cpu_count);
+
+    encoder.ptr.speed = 6;
+    // encoder.ptr.quality = 60;
+    // encoder.ptr.qualityAlpha = 60;
+    log.debug("speed={d}, quality={d}, quality_alpha={d}, codec={s}", .{ encoder.ptr.speed, encoder.ptr.quality, encoder.ptr.qualityAlpha, avif.codecName(encoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_ENCODE) });
+
+    if (encoder.addImage(image)) |result| {
+        const diagnostic_error = encoder.ptr.diag.@"error";
+        if (diagnostic_error[0] == 0)
+            r.err("Add image to encoder failed: %s", avif.resultToString(result))
+        else
+            r.err("Add image to encoder failed: %s\n%s", avif.resultToString(result), &diagnostic_error);
+    }
+
+    var avif_out: avif.ReadWriteData = .{};
+    if (encoder.finish(&avif_out)) |result|
+        r.err("Finish encode failed: %s", avif.resultToString(result));
+    defer avif_out.deinit();
+
+    const out_size = avif_out.inner.size;
+    log.debug("out_size={d}", .{out_size});
+
+    const out_data = avif_out.inner.data[0..out_size];
+    if (target_filename) |sub_path| {
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        const io = threaded.io();
+        var file = std.Io.Dir.cwd().createFile(io, std.mem.sliceTo(sub_path, 0), .{}) catch |e|
+            r.err("Create file failed: %s", @errorName(e).ptr);
+        defer file.close(io);
+        file.writeStreamingAll(io, out_data) catch |e|
+            r.err("Write file failed: %s", @errorName(e).ptr);
+        return c.R_NilValue;
+    } else {
+        const out = r.allocVector(.raw, out_size, .protected);
+        defer r.unprotect(1);
+        @memcpy(c.RAW(out), out_data);
+        return out;
+    }
+}

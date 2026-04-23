@@ -1,0 +1,16 @@
+Package: avif
+Title: Read and Write AVIF images
+Version: 0.0.1
+Authors@R: 
+    person("Zhichao", "Huang", , "hahv@msn.com", role = c("aut", "cre"))
+Description: Functions to read and write AV1 Image File Format. It can
+    read and write both files and in-memory raw vectors.
+License: BSD_3_clause + file LICENSE
+URL: https://github.com/r-zon/avif
+BugReports: https://github.com/r-zon/avif/issues
+Depends: 
+    R (>= 4.1.0)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+SystemRequirements: libavif, zig (>= 0.16.0)

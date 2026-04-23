@@ -1,0 +1,3 @@
+PKG_LIBS = ../zig-out/obj/avif.o -lavif -s
+
+$(SHLIB): ../zig-out/obj/avif.o
