@@ -2,6 +2,18 @@
 
 An easy interface to read and write AV1 Image File Format in R, for both files and in-memory raw vectors.
 
+## Installation
+
+Build-time requirements: [Zig 0.16.0](https://ziglang.org/download/#release-0.16.0)
+
+Runtime requirements: libavif
+
+Install `avif` with:
+
+```R
+pak::pkg_install("r-zon/avif")
+```
+
 ## Usage
 
 Read an AVIF file:
@@ -10,7 +22,7 @@ Read an AVIF file:
 read_avif("foo.avif")
 ```
 
-Save an RGB array into an AVIF:
+Save an RGB array into an AVIF file:
 
 ```R
 rgb_array <- hcl.colors(700) |>
@@ -21,7 +33,7 @@ rgb_array <- hcl.colors(700) |>
 write_avif(rgb_array, "8bpc.avif")
 ```
 
-`read_avif` and `write_avif` can output raw vectors:
+`read_avif` and `write_avif` can also output raw vectors:
 
 ```R
 write_avif(rgb_array) |> read_avif() |> plot()
