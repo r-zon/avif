@@ -3,6 +3,7 @@ const c = @import("c");
 const avif = @import("avif");
 const r = @import("r");
 const utils = @import("utils.zig");
+const init = @import("root");
 
 const copyAny = utils.copy;
 const copyFromLut = utils.copyFromLut;
@@ -47,12 +48,7 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, normalize_sexp: r.Sexp) callconv(.c)
     const decoder = avif.Decoder.init() catch |e|
         r.err("Init decoder failed: %s", @errorName(e).ptr);
     defer decoder.deinit();
-    const cpu_count = std.Thread.getCpuCount() catch blk: {
-        r.warn("Get the number of available logical CPU cores failed, multithreading disabled");
-        break :blk 1;
-    };
-    log.debug("cpu_count={d}", .{cpu_count});
-    decoder.ptr.maxThreads = @intCast(cpu_count);
+    decoder.ptr.maxThreads = @intCast(init.max_cpu_count);
 
     log.debug("codec={s}", .{avif.codecName(decoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_DECODE)});
 
@@ -240,12 +236,7 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp) callconv(.c) c.SEXP {
         r.err("Init encoder failed: %s", @errorName(e).ptr);
     defer encoder.deinit();
 
-    const cpu_count = std.Thread.getCpuCount() catch blk: {
-        r.warn("Get the number of available logical CPU cores failed, multithreading disabled");
-        break :blk 1;
-    };
-    log.debug("cpu_count={d}", .{cpu_count});
-    encoder.ptr.maxThreads = @intCast(cpu_count);
+    encoder.ptr.maxThreads = @intCast(init.max_cpu_count);
 
     encoder.ptr.speed = 6;
     // encoder.ptr.quality = 60;
