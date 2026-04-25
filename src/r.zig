@@ -38,14 +38,14 @@ pub const Sexp = extern struct {
 
         _,
 
-        fn ctype(self: Type) type {
+        fn ctype(comptime self: Type) type {
             return switch (self) {
                 .raw, .char => u8,
                 .integer, .logical => c_int,
                 .real => f64,
                 .string => c.SEXP, // CHARSXP
                 .complex => c.Rcomplex,
-                else => @panic("Unsupported type"),
+                else => @compileError("Unsupported type"),
             };
         }
     };
@@ -99,6 +99,17 @@ pub const Sexp = extern struct {
         assert(self.type() == .char);
         return c.Rf_translateCharUTF8(self.ptr);
     }
+
+    pub fn asInteger(self: Sexp) ?c_int {
+        const int = c.Rf_asInteger(self.ptr);
+        if (int == na(.integer)) return null;
+        return int;
+    }
+
+    // Introduced in R 4.5.0
+    pub fn asBool(self: Sexp) bool {
+        return c.Rf_asBool(self.ptr);
+    }
 };
 
 pub fn na(comptime T: Sexp.Type) T.ctype() {
@@ -106,7 +117,7 @@ pub fn na(comptime T: Sexp.Type) T.ctype() {
         .integer, .logical => c.R_NaInt,
         .real => c.R_NaReal,
         .string => c.R_NaString,
-        else => @panic("Unsupported type"),
+        else => @compileError("Unsupported type"),
     };
 }
 
@@ -125,11 +136,29 @@ pub fn allocScalar(comptime T: Sexp.Type, value: T.ctype(), status: Sexp.Status)
         .complex => c.Rf_ScalarComplex(value),
         .raw => c.Rf_ScalarRaw(value),
         .string => c.Rf_ScalarString(value),
-        else => @panic("Unsupported type"),
+        else => @compileError("Unsupported type"),
     };
     if (status == .protected)
         return protect(scalar);
     return scalar;
+}
+
+const CharacterEncoding = enum(u8) {
+    native = 0,
+    utf8 = 1,
+    latin1 = 2,
+    bytes = 3,
+    symbol = 4,
+    any = 99,
+};
+
+pub fn makeChar(data: []const u8, encoding: CharacterEncoding) c.SEXP {
+    return c.Rf_mkCharLenCE(data.ptr, @intCast(data.len), @intFromEnum(encoding));
+}
+
+pub fn getVariable(sym: c.SEXP, rho: c.SEXP, inherits: bool, ifnotfound: c.SEXP) c.SEXP {
+    // Introduced in R 4.5.0
+    return c.R_getVarEx(sym, rho, @intFromBool(inherits), ifnotfound);
 }
 
 pub const warn = c.Rf_warning;
@@ -139,6 +168,9 @@ pub const unprotect = c.Rf_unprotect;
 pub const setAttribute = c.Rf_setAttrib;
 pub const getAttribute = c.Rf_getAttrib;
 pub const install = c.Rf_install;
+pub const installChar = c.Rf_installTrChar;
+pub const printName = c.PRINTNAME;
+pub const getOption = c.Rf_GetOption1;
 
 pub const CallMethodDef = c.R_CallMethodDef;
 pub const DllInfo = c.DllInfo;

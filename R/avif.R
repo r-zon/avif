@@ -13,8 +13,18 @@
 #' read_avif("8bpc.avif")
 #' read_avif("10bpc.avif", ptype = 0L)
 #' read_avif(readBin("12bpc.avif", "raw", file.size("12bpc.avif")), ptype = 0., normalize = TRUE)
-read_avif <- function(source, ..., ptype = raw(), normalize = FALSE) {
-  img <- .Call(AVIF_read_avif, source, ptype, normalize)
+read_avif <- function(
+  source,
+  ...,
+  ptype = raw(),
+  normalize = FALSE,
+  jobs = NULL
+) {
+  arguments <- new.env(parent = emptyenv())
+  arguments$jobs <- jobs
+  arguments$normalize <- normalize
+
+  img <- .Call(AVIF_read_avif, source, ptype, arguments)
   depth <- attr(img, "depth")
   img <- aperm(img)
   attr(img, "depth") <- depth
@@ -39,8 +49,24 @@ read_avif <- function(source, ..., ptype = raw(), normalize = FALSE) {
 #'   aperm()
 #' write_avif(rgb_array, "8bpc.avif")
 #' writeBin(write_avif(rgb_array), "8bpc.avif")
-write_avif <- function(image, target = NULL) {
-  bytes <- .Call(AVIF_write_avif, aperm(image), target)
+write_avif <- function(
+  image,
+  target = NULL,
+  ...,
+  speed = 6L,
+  quality = 60L,
+  alpha_quality = 60L,
+  format = 444L,
+  jobs = NULL
+) {
+  arguments <- new.env(parent = emptyenv())
+  arguments$jobs <- jobs
+  arguments$speed <- speed
+  arguments$quality <- quality
+  arguments$alpha_quality <- alpha_quality
+  arguments$format <- format
+
+  bytes <- .Call(AVIF_write_avif, aperm(image), target, arguments)
   if (is.null(target)) {
     bytes
   } else {

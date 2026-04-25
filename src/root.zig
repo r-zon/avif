@@ -13,7 +13,12 @@ const PixelType = enum {
     u16,
 };
 
-pub fn readAvif(src: r.Sexp, proto: r.Sexp, normalize_sexp: r.Sexp) callconv(.c) c.SEXP {
+const DecodingOptions = struct {
+    jobs: ?c_int = null,
+    normalize: bool = false,
+};
+
+pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) c.SEXP {
     const log = std.log.scoped(.read);
 
     const src_type = src.type();
@@ -30,16 +35,19 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, normalize_sexp: r.Sexp) callconv(.c)
         else => r.err("Output must be a raw, real, or integer vector"),
     }
 
-    const normalize = blk: {
-        if (normalize_sexp.isLogical() and normalize_sexp.len() == 1) {
-            const element = normalize_sexp.logical()[0];
-            if (element != r.na(.logical))
-                break :blk element == 1;
-        }
-        r.err("Normalize argument must be a scalar logical");
-    };
-    log.debug("normalize={}", .{normalize});
+    var options: DecodingOptions = .{};
+    parseEnvironment(@TypeOf(options), &options, args);
+    log.debug("options={}", .{options});
 
+    const jobs: c_int = blk: {
+        if (options.jobs) |j| {
+            if (j < 1 or j > init.max_cpu_count)
+                r.err("Invalid argument jobs=%d, jobs must be in (0, %d]", j, init.max_cpu_count);
+            break :blk j;
+        }
+        break :blk @intCast(init.max_cpu_count);
+    };
+    const normalize = options.normalize;
     if (normalize and out_type != .real) {
         out_type = .real;
         r.warn("Normalization turned on, output a real vector instead");
@@ -48,9 +56,9 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, normalize_sexp: r.Sexp) callconv(.c)
     const decoder = avif.Decoder.init() catch |e|
         r.err("Init decoder failed: %s", @errorName(e).ptr);
     defer decoder.deinit();
-    decoder.ptr.maxThreads = @intCast(init.max_cpu_count);
-
     log.debug("codec={s}", .{avif.codecName(decoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_DECODE)});
+
+    decoder.ptr.maxThreads = jobs;
 
     const src_len = src.len();
     if (src_type == .string) {
@@ -172,7 +180,15 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, normalize_sexp: r.Sexp) callconv(.c)
     return out;
 }
 
-pub fn writeAvif(src: r.Sexp, target: r.Sexp) callconv(.c) c.SEXP {
+const EncodingOptions = struct {
+    jobs: ?c_int = null,
+    speed: c_int = 6,
+    quality: c_int = 60,
+    alpha_quality: c_int = 60,
+    format: c_uint = 444,
+};
+
+pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) c.SEXP {
     const log = std.log.scoped(.write);
 
     const src_type = src.type();
@@ -200,13 +216,47 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp) callconv(.c) c.SEXP {
         else => r.err("Target must be a null or a string scalar"),
     };
 
+    var options: EncodingOptions = .{};
+    parseEnvironment(@TypeOf(options), &options, args);
+    log.debug("options={}", .{options});
+
+    const jobs: c_int = blk: {
+        if (options.jobs) |j| {
+            if (j < 1 or j > init.max_cpu_count)
+                r.err("Invalid argument jobs=%d, jobs must be in (0, %d]", j, init.max_cpu_count);
+            break :blk j;
+        }
+        break :blk @intCast(init.max_cpu_count);
+    };
+    const speed = options.speed;
+    if (speed < 0 or speed > 10)
+        r.err("Invalid argument speed=%d, speed must be in [0, 10] where 10 is the fastest", speed);
+    const quality = options.quality;
+    if (quality < 0 or quality > 100)
+        r.err("Invalid argument quality=%d, quality must be in [0, 100] where 100 is lossless", quality);
+    const alpha_quality = options.alpha_quality;
+    if (alpha_quality < 0 or alpha_quality > 100)
+        r.err("Invalid argument alpha_quality=%d, alpha_quality must be in [0, 100] where 100 is lossless", alpha_quality);
+    const format: avif.Image.PixelFormat = switch (options.format) {
+        444 => .yuv444,
+        422 => .yuv422,
+        420 => .yuv420,
+        400 => .yuv400,
+        else => |f| r.err("Invalid argument format=%d, format must be 444, 422, 420 or 400", f),
+    };
+
     const channel_count, const width, const height = blk: {
         const int = src_dim.integer();
         break :blk .{ int[0], int[1], int[2] };
     };
     log.debug("width={d} height={d} channel_count={d}", .{ width, height, channel_count });
 
-    var image = avif.Image.initWithOptions(.{ .width = @intCast(width), .height = @intCast(height), .depth = 8 }) catch |e|
+    var image = avif.Image.initWithOptions(.{
+        .width = @intCast(width),
+        .height = @intCast(height),
+        .depth = 8,
+        .format = format,
+    }) catch |e|
         r.err("Image init failed: %s", @errorName(e).ptr);
     defer image.deinit();
 
@@ -230,25 +280,23 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp) callconv(.c) c.SEXP {
         r.err("Unsupported pixel type: %s", @tagName(pixel_type).ptr);
 
     if (image.toYuv(&rgb)) |result|
-        r.err("Convert from YUV failed: %s", avif.resultToString(result));
+        r.err("Convert to YUV failed: %s", avif.resultToString(result));
 
     var encoder = avif.Encoder.init() catch |e|
         r.err("Init encoder failed: %s", @errorName(e).ptr);
     defer encoder.deinit();
+    log.debug("codec={s}", .{avif.codecName(encoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_ENCODE)});
 
-    encoder.ptr.maxThreads = @intCast(init.max_cpu_count);
-
-    encoder.ptr.speed = 6;
-    // encoder.ptr.quality = 60;
-    // encoder.ptr.qualityAlpha = 60;
-    log.debug("speed={d}, quality={d}, quality_alpha={d}, codec={s}", .{ encoder.ptr.speed, encoder.ptr.quality, encoder.ptr.qualityAlpha, avif.codecName(encoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_ENCODE) });
+    encoder.ptr.maxThreads = jobs;
+    encoder.ptr.speed = speed;
+    encoder.ptr.quality = options.quality;
+    encoder.ptr.qualityAlpha = options.alpha_quality;
 
     if (encoder.addImage(image)) |result| {
         const diagnostic_error = encoder.ptr.diag.@"error";
-        if (diagnostic_error[0] == 0)
-            r.err("Add image to encoder failed: %s", avif.resultToString(result))
-        else
-            r.err("Add image to encoder failed: %s\n%s", avif.resultToString(result), &diagnostic_error);
+        r.err("Add image to encoder failed: %s", avif.resultToString(result));
+        if (diagnostic_error[0] != 0)
+            r.err("%s", &diagnostic_error);
     }
 
     var avif_out: avif.ReadWriteData = .{};
@@ -274,5 +322,22 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp) callconv(.c) c.SEXP {
         defer r.unprotect(1);
         @memcpy(c.RAW(out), out_data);
         return out;
+    }
+}
+
+fn parseEnvironment(comptime T: type, result: *T, env: r.Sexp) void {
+    inline for (@typeInfo(T).@"struct".fields) |field| blk: {
+        const name = r.installChar(r.makeChar(field.name, .utf8));
+        const variable = r.getVariable(name, env.ptr, false, null);
+        if (variable) |val| {
+            const v: r.Sexp = .{ .ptr = val };
+            @field(result, field.name) = switch (@FieldType(T, field.name)) {
+                bool => v.asBool(),
+                ?c_int => v.asInteger(),
+                c_int => v.asInteger() orelse break :blk,
+                c_uint, usize => |U| std.math.cast(U, v.asInteger() orelse break :blk) orelse break :blk,
+                else => @compileError("Unsupported type"),
+            };
+        }
     }
 }

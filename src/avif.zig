@@ -65,10 +65,19 @@ pub const ReadWriteData = extern struct {
 pub const Image = extern struct {
     ptr: *c.avifImage,
 
+    pub const PixelFormat = enum(u8) {
+        none = 0,
+        yuv444 = 1,
+        yuv422 = 2,
+        yuv420 = 3,
+        yuv400 = 4,
+    };
+
     const Options = struct {
         width: u32,
         height: u32,
         depth: u32,
+        format: PixelFormat,
     };
 
     pub fn init() !Image {
@@ -76,7 +85,12 @@ pub const Image = extern struct {
     }
 
     pub fn initWithOptions(options: Options) !Image {
-        return .{ .ptr = c.avifImageCreate(options.width, options.height, options.depth, c.AVIF_PIXEL_FORMAT_YUV444) orelse return error.OutOfMemory };
+        return .{ .ptr = c.avifImageCreate(
+            options.width,
+            options.height,
+            options.depth,
+            @intFromEnum(options.format),
+        ) orelse return error.OutOfMemory };
     }
 
     pub fn deinit(self: *Image) void {
