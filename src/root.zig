@@ -289,14 +289,15 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) c.SEXP 
 
     encoder.ptr.maxThreads = jobs;
     encoder.ptr.speed = speed;
-    encoder.ptr.quality = options.quality;
-    encoder.ptr.qualityAlpha = options.alpha_quality;
+    encoder.ptr.quality = quality;
+    encoder.ptr.qualityAlpha = alpha_quality;
 
     if (encoder.addImage(image)) |result| {
         const diagnostic_error = encoder.ptr.diag.@"error";
-        r.err("Add image to encoder failed: %s", avif.resultToString(result));
-        if (diagnostic_error[0] != 0)
-            r.err("%s", &diagnostic_error);
+        if (diagnostic_error[0] == 0)
+            r.err("Add image to encoder failed: %s", avif.resultToString(result))
+        else
+            r.err("Add image to encoder failed: %s\n%s", avif.resultToString(result), &diagnostic_error);
     }
 
     var avif_out: avif.ReadWriteData = .{};
