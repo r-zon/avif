@@ -1,6 +1,11 @@
-: ${R_HOME=`R RHOME`}
+#!/bin/bash
+: ${R_HOME=$(R RHOME)}
 if test -z "${R_HOME}"; then
   echo "could not determine R_HOME"
+  exit 1
+fi
+if ! command -v zig &>/dev/null; then
+  echo "could not find Zig"
   exit 1
 fi
 echo -n "using Zig "
