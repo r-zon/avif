@@ -24,3 +24,8 @@ pub inline fn copy(dest: anytype, src: anytype) void {
     for (dest, src) |*i, j|
         i.* = j;
 }
+
+pub inline fn copyTruncate(dest: anytype, src: anytype) void {
+    for (dest, src) |*i, j|
+        i.* = @truncate(j);
+}

@@ -6,6 +6,7 @@ const utils = @import("utils.zig");
 const init = @import("root");
 
 const copyAny = utils.copy;
+const copyTruncate = utils.copyTruncate;
 const copyFromLut = utils.copyFromLut;
 
 const PixelType = enum {
@@ -18,7 +19,7 @@ const DecodingOptions = struct {
     normalize: bool = false,
 };
 
-pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) c.SEXP {
+pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
     const log = std.log.scoped(.read);
 
     const src_type = src.type();
@@ -126,16 +127,16 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) c.SEXP {
     const pixels_u8 = pixels[0..out_size];
     const pixels_u16: []u16 = @ptrCast(@alignCast(pixels[0 .. out_size * 2]));
     blk: switch (out_type) {
-        .raw => @memcpy(c.RAW(out), pixels_u8),
+        .raw => @memcpy(out.raw(), pixels_u8),
         .integer => {
-            const buf = c.INTEGER(out)[0..out_size];
+            const buf = out.integer()[0..out_size];
             if (pixel_type == .u16)
                 copyAny(buf, pixels_u16)
             else
                 copyAny(buf, pixels_u8);
         },
         .real => {
-            const buf = c.REAL(out)[0..out_size];
+            const buf = out.real()[0..out_size];
 
             if (!normalize) {
                 if (pixel_type == .u8)
@@ -167,15 +168,13 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) c.SEXP {
 
     const dim = r.allocVector(.integer, 3, .protected);
     defer r.unprotect(1);
-    inline for (c.INTEGER(dim), .{ channel_count, width, height }) |*i, j|
+    inline for (dim.integer(), .{ channel_count, width, height }) |*i, j|
         i.* = @intCast(j);
-    _ = r.setAttribute(out, c.R_DimSymbol, dim);
+    _ = r.setAttribute(out, .dim, dim);
 
     const depth_sexp = r.allocScalar(.integer, @intCast(depth), .protected);
     defer r.unprotect(1);
-    _ = r.setAttribute(out, r.install("depth"), depth_sexp);
-
-    // _ = r.setAttribute(out, r.install("normalized"), normalize_sexp.ptr);
+    _ = r.setAttribute(out, .{ .custom = r.install("depth") }, depth_sexp);
 
     return out;
 }
@@ -188,16 +187,32 @@ const EncodingOptions = struct {
     format: c_uint = 444,
 };
 
-pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) c.SEXP {
+pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
     const log = std.log.scoped(.write);
 
     const src_type = src.type();
     log.debug("src_type={t}", .{src_type});
-    if (src_type != .raw)
-        r.err("Source must be a raw vector with dim (height, width, channel) set");
-    const src_dim: r.Sexp = .{ .ptr = r.getAttribute(src.ptr, c.R_DimSymbol) };
+    switch (src_type) {
+        .raw, .integer => {},
+        else => r.err("Source must be a raw or integer vector with dim (height, width, channel) set"),
+    }
+
+    const src_dim = r.getAttribute(src, .dim);
     if (src_dim.isNull() or src_dim.len() != 3)
         r.err("Source \"dim\" attribute (height, width, channel) required");
+
+    var src_depth: u32 = if (r.getAttribute(src, .{ .custom = r.install("depth") }).asInteger()) |depth|
+        switch (depth) {
+            8, 10, 12 => @intCast(depth),
+            else => |d| r.err("Invalid depth=%d, depth must be 8, 10 or 12", d),
+        }
+    else
+        8;
+    log.debug("src_depth={d}", .{src_depth});
+    if (src_type == .raw and src_depth != 8) {
+        r.warn("Ignore depth=%d, depth should always be 8 when source is a raw vector", src_depth);
+        src_depth = 8;
+    }
 
     const target_type = target.type();
     log.debug("target_type={t}", .{target_type});
@@ -245,16 +260,16 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) c.SEXP 
         else => |f| r.err("Invalid argument format=%d, format must be 444, 422, 420 or 400", f),
     };
 
-    const channel_count, const width, const height = blk: {
+    const channel_count: u32, const width: u32, const height: u32 = blk: {
         const int = src_dim.integer();
-        break :blk .{ int[0], int[1], int[2] };
+        break :blk .{ @intCast(int[0]), @intCast(int[1]), @intCast(int[2]) };
     };
     log.debug("width={d} height={d} channel_count={d}", .{ width, height, channel_count });
 
     var image = avif.Image.initWithOptions(.{
-        .width = @intCast(width),
-        .height = @intCast(height),
-        .depth = 8,
+        .width = width,
+        .height = height,
+        .depth = src_depth,
         .format = format,
     }) catch |e|
         r.err("Image init failed: %s", @errorName(e).ptr);
@@ -272,12 +287,21 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) c.SEXP 
         r.err("Allocate RGB pixels failed: %s", avif.resultToString(result));
     defer rgb.freePixels();
 
-    const pixel_type: PixelType = if (rgb.inner.depth > 8) .u16 else .u8;
+    const pixel_type: PixelType = if (src_depth > 8) .u16 else .u8;
     log.debug("pixel_type={t}", .{pixel_type});
-    if (pixel_type == .u8)
+    if (src_type == .raw)
         @memcpy(rgb.inner.pixels, src.raw()[0..@intCast(src.len())])
-    else
-        r.err("Unsupported pixel type: %s", @tagName(pixel_type).ptr);
+    else {
+        const src_uint: []c_uint = @ptrCast(src.integer()[0..@intCast(src.len())]);
+        if (pixel_type == .u8) {
+            copyTruncate(rgb.inner.pixels, src_uint);
+        } else {
+            const plane_size = width * height;
+            const out_size = plane_size * channel_count;
+            const pixels_u16: []u16 = @ptrCast(@alignCast(rgb.inner.pixels[0 .. out_size * 2]));
+            copyTruncate(pixels_u16, src_uint);
+        }
+    }
 
     if (image.toYuv(&rgb)) |result|
         r.err("Convert to YUV failed: %s", avif.resultToString(result));
@@ -317,11 +341,11 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) c.SEXP 
         defer file.close(io);
         file.writeStreamingAll(io, out_data) catch |e|
             r.err("Write file failed: %s", @errorName(e).ptr);
-        return c.R_NilValue;
+        return .{ .ptr = c.R_NilValue };
     } else {
         const out = r.allocVector(.raw, out_size, .protected);
         defer r.unprotect(1);
-        @memcpy(c.RAW(out), out_data);
+        @memcpy(out.raw(), out_data);
         return out;
     }
 }

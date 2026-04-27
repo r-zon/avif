@@ -66,7 +66,11 @@ write_avif <- function(
   arguments$alpha_quality <- alpha_quality
   arguments$format <- format
 
-  bytes <- .Call(AVIF_write_avif, aperm(image), target, arguments)
+  depth <- attr(image, "depth")
+  image <- aperm(image)
+  attr(image, "depth") <- depth
+
+  bytes <- .Call(AVIF_write_avif, image, target, arguments)
   if (is.null(target)) {
     bytes
   } else {

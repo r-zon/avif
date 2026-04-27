@@ -90,6 +90,11 @@ pub const Sexp = extern struct {
         return c.INTEGER(self.ptr);
     }
 
+    pub fn real(self: Sexp) [*c]f64 {
+        assert(self.type() == .real);
+        return c.REAL(self.ptr);
+    }
+
     pub fn stringElement(self: Sexp, i: c.R_xlen_t) Sexp {
         assert(self.type() == .string);
         return .{ .ptr = c.STRING_ELT(self.ptr, i) };
@@ -121,14 +126,14 @@ pub fn na(comptime T: Sexp.Type) T.ctype() {
     };
 }
 
-pub fn allocVector(T: Sexp.Type, n: usize, status: Sexp.Status) c.SEXP {
+pub fn allocVector(T: Sexp.Type, n: usize, status: Sexp.Status) Sexp {
     const vector = c.Rf_allocVector(@intFromEnum(T), @intCast(n));
     if (status == .protected)
-        return protect(vector);
-    return vector;
+        _ = protect(vector);
+    return .{ .ptr = vector };
 }
 
-pub fn allocScalar(comptime T: Sexp.Type, value: T.ctype(), status: Sexp.Status) c.SEXP {
+pub fn allocScalar(comptime T: Sexp.Type, value: T.ctype(), status: Sexp.Status) Sexp {
     const scalar = switch (T) {
         .logical => c.Rf_ScalarLogical(value),
         .integer => c.Rf_ScalarInteger(value),
@@ -139,8 +144,8 @@ pub fn allocScalar(comptime T: Sexp.Type, value: T.ctype(), status: Sexp.Status)
         else => @compileError("Unsupported type"),
     };
     if (status == .protected)
-        return protect(scalar);
-    return scalar;
+        _ = protect(scalar);
+    return .{ .ptr = scalar };
 }
 
 const CharacterEncoding = enum(u8) {
@@ -161,13 +166,37 @@ pub fn getVariable(sym: c.SEXP, rho: c.SEXP, inherits: bool, ifnotfound: c.SEXP)
     return c.R_getVarEx(sym, rho, @intFromBool(inherits), ifnotfound);
 }
 
+pub fn setAttribute(vec: Sexp, name: Attribute, value: Sexp) Sexp {
+    return .{
+        .ptr = c.Rf_setAttrib(vec.ptr, switch (name) {
+            .dim => c.R_DimSymbol,
+            .custom => |sexp| sexp.ptr,
+        }, value.ptr),
+    };
+}
+
+pub fn getAttribute(vec: Sexp, name: Attribute) Sexp {
+    return .{
+        .ptr = c.Rf_getAttrib(vec.ptr, switch (name) {
+            .dim => c.R_DimSymbol,
+            .custom => |sexp| sexp.ptr,
+        }),
+    };
+}
+
+pub fn install(s: [:0]const u8) Sexp {
+    return .{ .ptr = c.Rf_install(s) };
+}
+
+pub const Attribute = union(enum) {
+    dim,
+    custom: Sexp,
+};
+
 pub const warn = c.Rf_warning;
 pub const err = c.Rf_error;
 pub const protect = c.Rf_protect;
 pub const unprotect = c.Rf_unprotect;
-pub const setAttribute = c.Rf_setAttrib;
-pub const getAttribute = c.Rf_getAttrib;
-pub const install = c.Rf_install;
 pub const installChar = c.Rf_installTrChar;
 pub const printName = c.PRINTNAME;
 pub const getOption = c.Rf_GetOption1;
