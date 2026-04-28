@@ -4,14 +4,27 @@
 \alias{read_avif}
 \title{Read an AVIF image}
 \usage{
-read_avif(source, ..., ptype = raw(), normalize = FALSE)
+read_avif(
+  source,
+  ...,
+  ptype = raw(),
+  normalize = FALSE,
+  native_raster = FALSE,
+  jobs = NULL
+)
 }
 \arguments{
 \item{source}{A file path or a raw vector.}
 
-\item{ptype}{Prototype such as raw(), 0L or 0.0 that defines the output type.}
+\item{...}{Unused.}
 
-\item{normalize}{If \code{TRUE}, output a normalized (0-1) array.}
+\item{ptype}{Prototype like raw(), 0L or 0.0 that defines the output type.}
+
+\item{normalize}{If \code{TRUE}, output a normalized (0-1) real array.}
+
+\item{native_raster}{If \code{TRUE}, output a nativeRaster integer matrix.}
+
+\item{jobs}{Number of decoder threads, must be greater than 0, or \code{NULL} for all cores.}
 }
 \value{
 An RGB array.
@@ -20,7 +33,17 @@ An RGB array.
 Read an AVIF image from a file or a raw vector into an RGB array.
 }
 \examples{
-read_avif("8bpc.avif")
-read_avif("10bpc.avif", ptype = 0L)
-read_avif(readBin("12bpc.avif", "raw", file.size("12bpc.avif")), ptype = 0., normalize = TRUE)
+if (file.exists("8bpc.avif")) {
+  read_avif("8bpc.avif")
+}
+if (file.exists("10bpc.avif")) {
+  read_avif("10bpc.avif", ptype = 0L, native_raster = TRUE)
+}
+if (file.exists("12bpc.avif")) {
+  read_avif(
+    readBin("12bpc.avif", "raw", file.size("12bpc.avif")),
+    ptype = 0.,
+    normalize = TRUE
+  )
+}
 }

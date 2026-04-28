@@ -5,14 +5,27 @@
 #'
 #' @useDynLib avif, .registration = TRUE, .fixes = "AVIF_"
 #' @param source A file path or a raw vector.
-#' @param ptype Prototype such as raw(), 0L or 0.0 that defines the output type.
-#' @param normalize If `TRUE`, output a normalized (0-1) array.
+#' @param ptype Prototype like raw(), 0L or 0.0 that defines the output type.
+#' @param normalize If `TRUE`, output a normalized (0-1) real array.
+#' @param native_raster If `TRUE`, output a nativeRaster integer matrix.
+#' @param jobs Number of decoder threads, must be greater than 0, or `NULL` for all cores.
+#' @param ... Unused.
 #' @return An RGB array.
 #' @export
 #' @examples
-#' read_avif("8bpc.avif")
-#' read_avif("10bpc.avif", ptype = 0L)
-#' read_avif(readBin("12bpc.avif", "raw", file.size("12bpc.avif")), ptype = 0., normalize = TRUE)
+#' if (file.exists("8bpc.avif")) {
+#'   read_avif("8bpc.avif")
+#' }
+#' if (file.exists("10bpc.avif")) {
+#'   read_avif("10bpc.avif", ptype = 0L, native_raster = TRUE)
+#' }
+#' if (file.exists("12bpc.avif")) {
+#'   read_avif(
+#'     readBin("12bpc.avif", "raw", file.size("12bpc.avif")),
+#'     ptype = 0.,
+#'     normalize = TRUE
+#'   )
+#' }
 read_avif <- function(
   source,
   ...,
@@ -42,9 +55,15 @@ read_avif <- function(
 #'
 #' Create an AVIF image from an RGB array into a file or return a raw vector.
 #'
-#' @param image A raw vector with dimensions (height, width, channel).
+#' @param image A raw or integer vector with dimensions (height, width, channel).
 #' @param target A file path, or `NULL` for a raw vector.
-#' @return `NULL` if `target` is a file path, or a raw vector.
+#' @param speed Encoder speed in \[0, 10\] where 0 is the slowest, 10 is the fastest.
+#' @param quality Color quality in \[0, 100\] where 100 is lossless.
+#' @param alpha_quality Alpha quality in \[0, 100\] where 100 is lossless.
+#' @param format YUV format, must be one of 444, 422, 420 or 400.
+#' @param jobs Number of encoder threads, must be greater than 0, or `NULL` for all cores.
+#' @param ... Unused.
+#' @return `NULL` if `target` is a file path, otherwise a raw vector.
 #' @export
 #' @examples
 #' rgb_array <- hcl.colors(700) |>
@@ -52,7 +71,7 @@ read_avif <- function(
 #'   as.raw() |>
 #'   array(c(3, 700, 100)) |>
 #'   aperm()
-#' write_avif(rgb_array, "8bpc.avif")
+#' write_avif(rgb_array, "8bpc.avif", speed = 0L, quality = 100L)
 #' writeBin(write_avif(rgb_array), "8bpc.avif")
 write_avif <- function(
   image,
@@ -83,6 +102,7 @@ write_avif <- function(
   }
 }
 
+#' @importFrom grDevices as.raster
 #' @export
 as.raster.avif <- function(x, ..., max = NULL) {
   if (is.null(max)) {

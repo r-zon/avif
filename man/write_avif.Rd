@@ -4,15 +4,36 @@
 \alias{write_avif}
 \title{Write an AVIF image}
 \usage{
-write_avif(image, target = NULL)
+write_avif(
+  image,
+  target = NULL,
+  ...,
+  speed = 6L,
+  quality = 60L,
+  alpha_quality = 60L,
+  format = 444L,
+  jobs = NULL
+)
 }
 \arguments{
-\item{image}{A raw vector with dimensions (height, width, channel).}
+\item{image}{A raw or integer vector with dimensions (height, width, channel).}
 
 \item{target}{A file path, or \code{NULL} for a raw vector.}
+
+\item{...}{Unused.}
+
+\item{speed}{Encoder speed in [0, 10] where 0 is the slowest, 10 is the fastest.}
+
+\item{quality}{Color quality in [0, 100] where 100 is lossless.}
+
+\item{alpha_quality}{Alpha quality in [0, 100] where 100 is lossless.}
+
+\item{format}{YUV format, must be one of 444, 422, 420 or 400.}
+
+\item{jobs}{Number of encoder threads, must be greater than 0, or \code{NULL} for all cores.}
 }
 \value{
-\code{NULL} if \code{target} is a file path, or a raw vector.
+\code{NULL} if \code{target} is a file path, otherwise a raw vector.
 }
 \description{
 Create an AVIF image from an RGB array into a file or return a raw vector.
@@ -23,6 +44,6 @@ rgb_array <- hcl.colors(700) |>
   as.raw() |>
   array(c(3, 700, 100)) |>
   aperm()
-write_avif(rgb_array, "8bpc.avif")
+write_avif(rgb_array, "8bpc.avif", speed = 0L, quality = 100L)
 writeBin(write_avif(rgb_array), "8bpc.avif")
 }
