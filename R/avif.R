@@ -18,13 +18,18 @@ read_avif <- function(
   ...,
   ptype = raw(),
   normalize = FALSE,
+  native_raster = FALSE,
   jobs = NULL
 ) {
   arguments <- new.env(parent = emptyenv())
   arguments$jobs <- jobs
   arguments$normalize <- normalize
+  arguments$native_raster <- native_raster
 
   img <- .Call(AVIF_read_avif, source, ptype, arguments)
+  if (native_raster) {
+    return(img)
+  }
   depth <- attr(img, "depth")
   img <- aperm(img)
   attr(img, "depth") <- depth

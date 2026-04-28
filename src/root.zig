@@ -17,6 +17,7 @@ const PixelType = enum {
 const DecodingOptions = struct {
     jobs: ?c_int = null,
     normalize: bool = false,
+    native_raster: bool = false,
 };
 
 pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
@@ -49,9 +50,16 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
         break :blk @intCast(init.max_cpu_count);
     };
     const normalize = options.normalize;
+    const native_raster = options.native_raster;
+    if (normalize and native_raster)
+        r.err("Normalization and native_raster cannot turn on in the same time");
     if (normalize and out_type != .real) {
+        r.warn("Normalization turned on, output a real vector instead of %s", @tagName(out_type).ptr);
         out_type = .real;
-        r.warn("Normalization turned on, output a real vector instead");
+    }
+    if (native_raster and out_type != .integer) {
+        r.warn("Native raster turned on, output a integer vector instead of %s", @tagName(out_type).ptr);
+        out_type = .integer;
     }
 
     const decoder = avif.Decoder.init() catch |e|
@@ -95,6 +103,8 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
 
     const pixel_type: PixelType = if (depth > 8) .u16 else .u8;
     log.debug("pixel_type={t}", .{pixel_type});
+    if (native_raster and pixel_type != .u8)
+        r.err("Native raster can only work with 8bpc images, current %sbpc", depth);
 
     if (pixel_type == .u16 and out_type == .raw) {
         out_type = if (normalize) .real else .integer;
@@ -117,26 +127,59 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
 
     const channel_count = rgb.channelCount();
     log.debug("width={d} height={d} channel_count={d}", .{ width, height, channel_count });
+    switch (channel_count) {
+        3, 4 => {},
+        else => r.err("Unsupported channel count: %d", channel_count),
+    }
 
     const plane_size = width * height;
-    const out_size = plane_size * channel_count;
-    const out = r.allocVector(out_type, out_size, .protected);
+    const total_size = plane_size * channel_count;
+    const pixels_len = if (pixel_type == .u8) total_size else 2 * total_size;
+    log.debug("plane_size={d} total_size={d} pixels_len={d}", .{ plane_size, total_size, pixels_len });
+    const out = r.allocVector(out_type, if (native_raster) plane_size else total_size, .protected);
     defer r.unprotect(1);
 
     const pixels = rgb.inner.pixels;
-    const pixels_u8 = pixels[0..out_size];
-    const pixels_u16: []u16 = @ptrCast(@alignCast(pixels[0 .. out_size * 2]));
+    const pixels_u8 = pixels[0..pixels_len];
+    if (native_raster) {
+        switch (channel_count) {
+            3 => {
+                const out_u32: []u32 = @ptrCast(out.integer()[0..plane_size]);
+                const alpha = if (std.builtin.Endian.native == .little) 0xff000000 else 0xff;
+                for (out_u32, 0..) |*u, i| {
+                    u.* = std.mem.readPackedInt(u24, pixels_u8, i * 24, .native);
+                    u.* |= alpha;
+                }
+            },
+            4 => {
+                const pixels_i32: []i32 = @ptrCast(@alignCast(pixels_u8));
+                @memcpy(out.integer(), pixels_i32[0..plane_size]);
+            },
+            // Checked before
+            else => unreachable,
+        }
+        const dim = r.allocVector(.integer, 2, .protected);
+        defer r.unprotect(1);
+        inline for (dim.integer(), .{ height, width }) |*i, j|
+            i.* = @intCast(j);
+        _ = r.setAttribute(out, .dim, dim);
+        _ = r.setAttribute(out, .class, r.makeString("nativeRaster"));
+
+        return out;
+    }
+
+    const pixels_u16: []u16 = @ptrCast(@alignCast(pixels_u8));
     blk: switch (out_type) {
         .raw => @memcpy(out.raw(), pixels_u8),
         .integer => {
-            const buf = out.integer()[0..out_size];
+            const buf = out.integer()[0..total_size];
             if (pixel_type == .u16)
                 copyAny(buf, pixels_u16)
             else
                 copyAny(buf, pixels_u8);
         },
         .real => {
-            const buf = out.real()[0..out_size];
+            const buf = out.real()[0..total_size];
 
             if (!normalize) {
                 if (pixel_type == .u8)
@@ -228,7 +271,7 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp 
             }
             r.err("Target file path must a string scalar");
         },
-        else => r.err("Target must be a null or a string scalar"),
+        else => r.err("Target must be `NULL` or a string scalar"),
     };
 
     var options: EncodingOptions = .{};

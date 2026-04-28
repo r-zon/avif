@@ -161,27 +161,21 @@ pub fn makeChar(data: []const u8, encoding: CharacterEncoding) c.SEXP {
     return c.Rf_mkCharLenCE(data.ptr, @intCast(data.len), @intFromEnum(encoding));
 }
 
+pub fn makeString(data: [:0]const u8) Sexp {
+    return .{ .ptr = c.Rf_mkString(data) };
+}
+
 pub fn getVariable(sym: c.SEXP, rho: c.SEXP, inherits: bool, ifnotfound: c.SEXP) c.SEXP {
     // Introduced in R 4.5.0
     return c.R_getVarEx(sym, rho, @intFromBool(inherits), ifnotfound);
 }
 
 pub fn setAttribute(vec: Sexp, name: Attribute, value: Sexp) Sexp {
-    return .{
-        .ptr = c.Rf_setAttrib(vec.ptr, switch (name) {
-            .dim => c.R_DimSymbol,
-            .custom => |sexp| sexp.ptr,
-        }, value.ptr),
-    };
+    return .{ .ptr = c.Rf_setAttrib(vec.ptr, name.ctype(), value.ptr) };
 }
 
 pub fn getAttribute(vec: Sexp, name: Attribute) Sexp {
-    return .{
-        .ptr = c.Rf_getAttrib(vec.ptr, switch (name) {
-            .dim => c.R_DimSymbol,
-            .custom => |sexp| sexp.ptr,
-        }),
-    };
+    return .{ .ptr = c.Rf_getAttrib(vec.ptr, name.ctype()) };
 }
 
 pub fn install(s: [:0]const u8) Sexp {
@@ -189,8 +183,17 @@ pub fn install(s: [:0]const u8) Sexp {
 }
 
 pub const Attribute = union(enum) {
+    class,
     dim,
     custom: Sexp,
+
+    fn ctype(self: Attribute) c.SEXP {
+        return switch (self) {
+            .class => c.R_ClassSymbol,
+            .dim => c.R_DimSymbol,
+            .custom => |sexp| sexp.ptr,
+        };
+    }
 };
 
 pub const warn = c.Rf_warning;
