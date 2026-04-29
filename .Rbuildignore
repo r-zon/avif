@@ -1,5 +1,6 @@
 (?:^|/)\.zig-cache$
 (?:^|/)zig-out$
 (?:^|/)\.jj$
+(?:^|/)\.github$
 \.tar\.gz$
 ^LICENSE\.txt$
