@@ -1,0 +1,29 @@
+name: R CMD check
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v6
+
+      - name: Read build.zig.zon
+        run: |
+          VERSION=$(grep -Po '\.\s*minimum_zig_version\s*=\s*"\K[^"]+' src/build.zig.zon)
+          echo "MINIMUM_ZIG_VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Setup zig
+        uses: mlugg/setup-zig@v2
+        version: ${{ MINIMUM_ZIG_VERSION }}
+
+      - name: Install dependencies
+        run: apt-get install -y libavif-dev
+
+      - uses: r-lib/actions/setup-r@v2
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+      - uses: r-lib/actions/check-r-package@v2
