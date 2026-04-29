@@ -2,7 +2,7 @@
 % Please edit documentation in R/avif.R
 \name{read_avif}
 \alias{read_avif}
-\title{Read an AVIF image}
+\title{Read an AVIF Image}
 \usage{
 read_avif(
   source,

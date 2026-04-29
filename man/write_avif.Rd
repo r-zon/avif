@@ -2,7 +2,7 @@
 % Please edit documentation in R/avif.R
 \name{write_avif}
 \alias{write_avif}
-\title{Write an AVIF image}
+\title{Write an AVIF Image}
 \usage{
 write_avif(
   image,
@@ -44,6 +44,7 @@ rgb_array <- hcl.colors(700) |>
   as.raw() |>
   array(c(3, 700, 100)) |>
   aperm()
-write_avif(rgb_array, "8bpc.avif", speed = 0L, quality = 100L)
-writeBin(write_avif(rgb_array), "8bpc.avif")
+save_path <- file.path(tempdir(), "8bpc.avif")
+write_avif(rgb_array, save_path, speed = 0L, quality = 100L)
+writeBin(write_avif(rgb_array), save_path)
 }

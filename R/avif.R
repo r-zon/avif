@@ -1,5 +1,5 @@
 #'
-#' Read an AVIF image
+#' Read an AVIF Image
 #'
 #' Read an AVIF image from a file or a raw vector into an RGB array.
 #'
@@ -51,7 +51,7 @@ read_avif <- function(
   img
 }
 
-#' Write an AVIF image
+#' Write an AVIF Image
 #'
 #' Create an AVIF image from an RGB array into a file or return a raw vector.
 #'
@@ -71,8 +71,9 @@ read_avif <- function(
 #'   as.raw() |>
 #'   array(c(3, 700, 100)) |>
 #'   aperm()
-#' write_avif(rgb_array, "8bpc.avif", speed = 0L, quality = 100L)
-#' writeBin(write_avif(rgb_array), "8bpc.avif")
+#' save_path <- file.path(tempdir(), "8bpc.avif")
+#' write_avif(rgb_array, save_path, speed = 0L, quality = 100L)
+#' writeBin(write_avif(rgb_array), save_path)
 write_avif <- function(
   image,
   target = NULL,

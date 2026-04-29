@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
     const c_mod = translate_c.createModule();
 
     const r_mod = b.createModule(.{
-        .root_source_file = b.path("src/r.zig"),
+        .root_source_file = b.path("r.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const avif_mod = b.createModule(.{
-        .root_source_file = b.path("src/avif.zig"),
+        .root_source_file = b.path("avif.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -39,7 +39,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const mod = b.createModule(.{
-        .root_source_file = b.path("src/root.zig"),
+        .root_source_file = b.path("root.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -52,7 +52,7 @@ pub fn build(b: *std.Build) void {
     const obj = b.addObject(.{
         .name = "avif",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/init.zig"),
+            .root_source_file = b.path("init.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -70,7 +70,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const install_artifact = b.addInstallArtifact(obj, .{
-        .dest_dir = .{ .override = .{ .custom = "obj" } },
+        .dest_dir = .{ .override = .{ .custom = "" } },
     });
     b.getInstallStep().dependOn(&install_artifact.step);
 }

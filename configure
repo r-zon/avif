@@ -1,13 +1,13 @@
-#!/bin/bash
+#!/bin/sh
 : ${R_HOME=$(R RHOME)}
 if test -z "${R_HOME}"; then
   echo "could not determine R_HOME"
   exit 1
 fi
-if ! command -v zig &>/dev/null; then
+if ! command -v zig >/dev/null 2>&1; then
   echo "could not find Zig"
   exit 1
 fi
-echo -n "using Zig "
+printf "using Zig "
 zig version
-"${R_HOME}/bin/R" CMD zig build -Doptimize=ReleaseFast -Dstrip
+cd src && "${R_HOME}/bin/R" CMD zig build -p . -Dcpu=baseline -Doptimize=ReleaseFast -Dstrip

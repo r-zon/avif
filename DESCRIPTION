@@ -1,5 +1,5 @@
 Package: avif
-Title: Read and Write AVIF images
+Title: Read and Write AVIF Images
 Version: 0.0.1
 Authors@R: 
     person("Zhichao", "Huang", , "hahv@msn.com", role = c("aut", "cre"))
