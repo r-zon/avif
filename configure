@@ -1,5 +1,5 @@
 #!/bin/sh
-: ${R_HOME=$(R RHOME)}
+: ${R_HOME:=$(R RHOME)}
 if test -z "${R_HOME}"; then
   echo "could not determine R_HOME"
   exit 1
@@ -10,4 +10,14 @@ if ! command -v zig >/dev/null 2>&1; then
 fi
 printf "using Zig "
 zig version
-cd src && "${R_HOME}/bin/R" CMD zig build -p . -Dcpu=baseline -Doptimize=ReleaseFast -Dstrip
+
+: ${ZIG_JOBS:=1}
+: ${ZIG_CPU:=baseline}
+: ${ZIG_OPTIMIZE:=ReleaseFast}
+: ${ZIG_STRIP:=true}
+
+cd src && "${R_HOME}/bin/R" CMD zig build -p . \
+  -j"${ZIG_JOBS}" \
+  -Dcpu="${ZIG_CPU}" \
+  -Doptimize="${ZIG_OPTIMIZE}" \
+  -Dstrip="${ZIG_STRIP}"
