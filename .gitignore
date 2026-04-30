@@ -4,3 +4,4 @@ zig-pkg/
 *.tar.gz
 *.o
 *.so
+/src/Makevars

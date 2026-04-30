@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) void {
     translate_c.defineCMacro("R_NO_REMAP", "");
     if (b.graph.environ_map.get("R_INCLUDE_DIR")) |r_include_dir|
         translate_c.addIncludePath(.{ .cwd_relative = r_include_dir });
+    translate_c.linkSystemLibrary("avif", .{});
     const c_mod = translate_c.createModule();
 
     const r_mod = b.createModule(.{
@@ -70,7 +71,22 @@ pub fn build(b: *std.Build) void {
     });
 
     const install_artifact = b.addInstallArtifact(obj, .{
-        .dest_dir = .{ .override = .{ .custom = "" } },
+        .dest_dir = .{ .override = .prefix },
     });
-    b.getInstallStep().dependOn(&install_artifact.step);
+
+    // Makevars
+    const pkg_config = b.graph.environ_map.get("PKG_CONFIG") orelse "pkg-config";
+    var code: u8 = undefined;
+    const libs = b.runAllowFail(&.{ pkg_config, "--libs", "libavif" }, &code, .ignore) catch "-lavif";
+    const makevars = b.addConfigHeader(
+        .{ .style = .{ .autoconf_at = b.path("Makevars.in") } },
+        .{ .libs = std.mem.trimEnd(u8, libs, "\n") },
+    );
+    makevars.step.dependOn(&install_artifact.step);
+    // Fix auto-generated comments
+    const run_sed = b.addSystemCommand(&.{ "sed", "1s/^./#/" });
+    run_sed.addFileArg(makevars.getOutputFile());
+
+    const install_makevars = b.addInstallFile(run_sed.captureStdOut(.{}), "Makevars");
+    b.getInstallStep().dependOn(&install_makevars.step);
 }

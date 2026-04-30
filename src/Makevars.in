@@ -1,0 +1,3 @@
+PKG_LIBS = avif.o @libs@
+
+$(SHLIB): avif.o
