@@ -87,6 +87,9 @@ pub fn build(b: *std.Build) void {
     const run_sed = b.addSystemCommand(&.{ "sed", "1s/^./#/" });
     run_sed.addFileArg(makevars.getOutputFile());
 
-    const install_makevars = b.addInstallFile(run_sed.captureStdOut(.{}), "Makevars");
+    const install_makevars = b.addInstallFile(
+        run_sed.captureStdOut(.{}),
+        if (target.result.os.tag == .windows) "Makevars.win" else "Makevars",
+    );
     b.getInstallStep().dependOn(&install_makevars.step);
 }

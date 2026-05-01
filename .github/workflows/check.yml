@@ -52,6 +52,12 @@ jobs:
           brew update
           brew install libavif
 
+      - name: Setup MSYS2 pacman
+        if: ${{ runner.os == 'Windows' }}
+        run: |
+          pacman-key --init
+          pacman-key --populate
+
       - name: Install dependencies on Windows
         if: ${{ runner.os == 'Windows' && runner.arch == 'X64' }}
         run: pacman -Sy --noconfirm mingw-w64-ucrt-x86_64-libavif
