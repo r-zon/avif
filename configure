@@ -14,9 +14,10 @@ zig version
 : ${ZIG_JOBS:=1}
 : ${ZIG_CPU:=baseline}
 : ${ZIG_OPTIMIZE:=ReleaseFast}
-: ${ZIG_STRIP:=true}
+: ${ZIG_STRIP:=false}
 
-cd src && "${R_HOME}/bin/R" CMD zig build -p . \
+cd src && SHLIB_EXT=$("${R_HOME}/bin/R" CMD config SHLIB_EXT) \
+  "${R_HOME}/bin/R" CMD zig build -p . \
   -j"${ZIG_JOBS}" \
   -Dcpu="${ZIG_CPU}" \
   -Doptimize="${ZIG_OPTIMIZE}" \

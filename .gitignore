@@ -5,5 +5,3 @@ zig-pkg/
 *.o
 *.so
 *.dll
-/src/Makevars
-/src/Makevars.win

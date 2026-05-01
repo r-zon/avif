@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    const strip = b.option(bool, "strip", "Remove debug information");
+    const strip = b.option(bool, "strip", "Remove debug information") orelse false;
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -20,6 +20,9 @@ pub fn build(b: *std.Build) void {
         translate_c.addIncludePath(.{ .cwd_relative = r_include_dir });
     translate_c.linkSystemLibrary("avif", .{});
     const c_mod = translate_c.createModule();
+    if (b.graph.environ_map.get("R_HOME")) |r_home|
+        c_mod.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ r_home, "lib" }) });
+    c_mod.linkSystemLibrary("R", .{});
 
     const r_mod = b.createModule(.{
         .root_source_file = b.path("r.zig"),
@@ -50,7 +53,8 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const obj = b.addObject(.{
+    const lib = b.addLibrary(.{
+        .linkage = .dynamic,
         .name = "avif",
         .root_module = b.createModule(.{
             .root_source_file = b.path("init.zig"),
@@ -62,34 +66,18 @@ pub fn build(b: *std.Build) void {
             },
             .strip = strip,
             .omit_frame_pointer = strip,
-            .unwind_tables = if (strip orelse false) .none else null,
+            .unwind_tables = if (strip) .none else null,
         }),
     });
 
-    obj.root_module.addAnonymousImport("build_zon", .{
+    if (optimize != .Debug and !strip)
+        lib.compress_debug_sections = .zstd;
+
+    lib.root_module.addAnonymousImport("build_zon", .{
         .root_source_file = b.path("build.zig.zon"),
     });
 
-    const install_artifact = b.addInstallArtifact(obj, .{
-        .dest_dir = .{ .override = .prefix },
-    });
-
-    // Makevars
-    const pkg_config = b.graph.environ_map.get("PKG_CONFIG") orelse "pkg-config";
-    var code: u8 = undefined;
-    const libs = b.runAllowFail(&.{ pkg_config, "--libs", "libavif" }, &code, .ignore) catch "-lavif";
-    const makevars = b.addConfigHeader(
-        .{ .style = .{ .autoconf_at = b.path("Makevars.in") } },
-        .{ .libs = std.mem.trimEnd(u8, libs, "\n") },
-    );
-    makevars.step.dependOn(&install_artifact.step);
-    // Fix auto-generated comments
-    const run_sed = b.addSystemCommand(&.{ "sed", "1s/^./#/" });
-    run_sed.addFileArg(makevars.getOutputFile());
-
-    const install_makevars = b.addInstallFile(
-        run_sed.captureStdOut(.{}),
-        if (target.result.os.tag == .windows) "Makevars.win" else "Makevars",
-    );
-    b.getInstallStep().dependOn(&install_makevars.step);
+    const shlib_ext = b.graph.environ_map.get("SHLIB_EXT") orelse "";
+    const install_lib = b.addInstallFile(lib.getEmittedBin(), b.fmt("{s}{s}", .{ lib.name, shlib_ext }));
+    b.getInstallStep().dependOn(&install_lib.step);
 }
