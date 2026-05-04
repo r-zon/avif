@@ -18,6 +18,7 @@ const DecodingOptions = struct {
     jobs: ?c_int = null,
     normalize: bool = false,
     native_raster: bool = false,
+    codec: ?[:0]const u8 = null,
 };
 
 pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
@@ -65,7 +66,13 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
     const decoder = avif.Decoder.init() catch |e|
         r.err("Init decoder failed: %s", @errorName(e).ptr);
     defer decoder.deinit();
-    log.debug("codec={s}", .{avif.codecName(decoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_DECODE)});
+    if (options.codec) |codec|
+        decoder.ptr.codecChoice = avif.codecChoiceFromName(codec);
+    const codec = avif.codecName(decoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_DECODE);
+    log.debug("codec={s}", .{codec});
+    if (options.codec) |cc|
+        if (!std.mem.eql(u8, codec, cc))
+            r.warn("Unknown codec `%s` for decoding. Fallback to `%s`.", cc.ptr, codec.ptr);
 
     decoder.ptr.maxThreads = jobs;
 
@@ -228,6 +235,7 @@ const EncodingOptions = struct {
     quality: c_int = 60,
     alpha_quality: c_int = 60,
     format: c_uint = 444,
+    codec: ?[:0]const u8 = null,
 };
 
 pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
@@ -352,7 +360,13 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp 
     var encoder = avif.Encoder.init() catch |e|
         r.err("Init encoder failed: %s", @errorName(e).ptr);
     defer encoder.deinit();
-    log.debug("codec={s}", .{avif.codecName(encoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_ENCODE)});
+    if (options.codec) |codec|
+        encoder.ptr.codecChoice = avif.codecChoiceFromName(codec);
+    const codec = avif.codecName(encoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_ENCODE);
+    log.debug("codec={s}", .{codec});
+    if (options.codec) |cc|
+        if (!std.mem.eql(u8, codec, cc))
+            r.warn("Unknown codec %s for encoding. Fallback to %s.", cc.ptr, codec.ptr);
 
     encoder.ptr.maxThreads = jobs;
     encoder.ptr.speed = speed;
@@ -404,6 +418,7 @@ fn parseEnvironment(comptime T: type, result: *T, env: r.Sexp) void {
                 ?c_int => v.asInteger(),
                 c_int => v.asInteger() orelse break :blk,
                 c_uint, usize => |U| std.math.cast(U, v.asInteger() orelse break :blk) orelse break :blk,
+                ?[:0]const u8 => if (v.isString() and v.len() == 1) std.mem.sliceTo(v.stringElement(0).toUtf8(), 0) else break :blk,
                 else => @compileError("Unsupported type"),
             };
         }

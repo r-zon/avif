@@ -8,6 +8,7 @@
 #' @param ptype Prototype like raw(), 0L or 0.0 that defines the output type.
 #' @param normalize If `TRUE`, output a normalized (0-1) real array.
 #' @param native_raster If `TRUE`, output a nativeRaster integer matrix.
+#' @param codec Codec for decoding, automatic if `NULL`.
 #' @param jobs Number of decoder threads, must be greater than 0, or `NULL` for all cores.
 #' @param ... Unused.
 #' @return An RGB array.
@@ -32,12 +33,14 @@ read_avif <- function(
   ptype = raw(),
   normalize = FALSE,
   native_raster = FALSE,
+  codec = NULL,
   jobs = NULL
 ) {
   arguments <- new.env(parent = emptyenv())
   arguments$jobs <- jobs
   arguments$normalize <- normalize
   arguments$native_raster <- native_raster
+  arguments$codec <- codec
 
   img <- .Call(AVIF_read_avif, source, ptype, arguments)
   if (native_raster) {
@@ -61,6 +64,7 @@ read_avif <- function(
 #' @param quality Color quality in \[0, 100\] where 100 is lossless.
 #' @param alpha_quality Alpha quality in \[0, 100\] where 100 is lossless.
 #' @param format YUV format, must be one of 444, 422, 420 or 400.
+#' @param codec Codec for encoding, automatic if `NULL`.
 #' @param jobs Number of encoder threads, must be greater than 0, or `NULL` for all cores.
 #' @param ... Unused.
 #' @return `NULL` if `target` is a file path, otherwise a raw vector.
@@ -82,6 +86,7 @@ write_avif <- function(
   quality = 60L,
   alpha_quality = 60L,
   format = 444L,
+  codec = NULL,
   jobs = NULL
 ) {
   arguments <- new.env(parent = emptyenv())
@@ -90,6 +95,7 @@ write_avif <- function(
   arguments$quality <- quality
   arguments$alpha_quality <- alpha_quality
   arguments$format <- format
+  arguments$codec <- codec
 
   depth <- attr(image, "depth")
   image <- aperm(image)

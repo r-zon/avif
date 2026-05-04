@@ -10,6 +10,7 @@ read_avif(
   ptype = raw(),
   normalize = FALSE,
   native_raster = FALSE,
+  codec = NULL,
   jobs = NULL
 )
 }
@@ -23,6 +24,8 @@ read_avif(
 \item{normalize}{If \code{TRUE}, output a normalized (0-1) real array.}
 
 \item{native_raster}{If \code{TRUE}, output a nativeRaster integer matrix.}
+
+\item{codec}{Codec for decoding, automatic if \code{NULL}.}
 
 \item{jobs}{Number of decoder threads, must be greater than 0, or \code{NULL} for all cores.}
 }

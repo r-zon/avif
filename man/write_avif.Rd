@@ -12,6 +12,7 @@ write_avif(
   quality = 60L,
   alpha_quality = 60L,
   format = 444L,
+  codec = NULL,
   jobs = NULL
 )
 }
@@ -29,6 +30,8 @@ write_avif(
 \item{alpha_quality}{Alpha quality in [0, 100] where 100 is lossless.}
 
 \item{format}{YUV format, must be one of 444, 422, 420 or 400.}
+
+\item{codec}{Codec for encoding, automatic if \code{NULL}.}
 
 \item{jobs}{Number of encoder threads, must be greater than 0, or \code{NULL} for all cores.}
 }

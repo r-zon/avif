@@ -1,3 +1,4 @@
+const std = @import("std");
 const c = @import("c");
 
 inline fn resultFn(result: c.avifResult) ?c.avifResult {
@@ -8,6 +9,14 @@ inline fn resultFn(result: c.avifResult) ?c.avifResult {
 
 pub const Decoder = extern struct {
     ptr: *c.avifDecoder,
+
+    // pub const Codec = enum(u8) {
+    //     auto = 0,
+    //     aom = 1,
+    //     dav1d = 2,
+    //     libgav1 = 3,
+    //     // avm
+    // };
 
     pub fn init() !Decoder {
         return .{ .ptr = c.avifDecoderCreate() orelse return error.OutOfMemory };
@@ -36,6 +45,14 @@ pub const Decoder = extern struct {
 
 pub const Encoder = extern struct {
     ptr: *c.avifEncoder,
+
+    // pub const Codec = enum(u8) {
+    //     auto = 0,
+    //     aom = 1,
+    //     rav1e = 4,
+    //     svt = 5,
+    //     // avm
+    // };
 
     pub fn init() !Encoder {
         return .{ .ptr = c.avifEncoderCreate() orelse return error.OutOfMemory };
@@ -138,6 +155,10 @@ pub const RgbImage = extern struct {
     }
 };
 
+pub fn codecName(codec: c.avifCodecChoice, flags: c.avifCodecFlags) [:0]const u8 {
+    return std.mem.sliceTo(c.avifCodecName(codec, flags), 0);
+}
+
 pub const resultToString = c.avifResultToString;
 pub const rgbFormatChannelCount = c.avifRGBFormatChannelCount;
-pub const codecName = c.avifCodecName;
+pub const codecChoiceFromName = c.avifCodecChoiceFromName;
