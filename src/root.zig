@@ -53,13 +53,13 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
     const normalize = options.normalize;
     const native_raster = options.native_raster;
     if (normalize and native_raster)
-        r.err("Normalization and native_raster cannot turn on in the same time");
+        r.err("Cannot enable normalization and nativeRaster together");
     if (normalize and out_type != .real) {
-        r.warn("Normalization turned on, output a real vector instead of %s", @tagName(out_type).ptr);
+        r.warn("Normalization enabled, output a real vector instead of %s", @tagName(out_type).ptr);
         out_type = .real;
     }
     if (native_raster and out_type != .integer) {
-        r.warn("Native raster turned on, output a integer vector instead of %s", @tagName(out_type).ptr);
+        r.warn("nativeRaster enabled, output a integer vector instead of %s", @tagName(out_type).ptr);
         out_type = .integer;
     }
 
