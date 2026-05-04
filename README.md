@@ -4,9 +4,10 @@ An easy interface to read and write AV1 Image File Format in R, for both files a
 
 ## Installation
 
-Build-time requirements: [Zig 0.16.0](https://ziglang.org/download/#release-0.16.0)
+Dependencies:
 
-Runtime requirements: libavif
+- [Zig 0.16.0](https://ziglang.org/download/#release-0.16.0) (for building)
+- libavif
 
 Install `avif` with:
 
@@ -50,5 +51,5 @@ write_avif(rgb_array) |> read_avif() |> plot()
 ### Write
 
 - [x] 8bpc
-- [ ] 10bpc
-- [ ] 12bpc
+- [x] 10bpc
+- [x] 12bpc
