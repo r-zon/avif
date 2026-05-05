@@ -1,6 +1,8 @@
 (?:^|/)\.zig-cache$
 (?:^|/)zig-out$
+(?:^|/)zig-pkg$
 (?:^|/)\.jj$
 (?:^|/)\.github$
 \.tar\.gz$
 ^LICENSE\.txt$
+^\.prepare$

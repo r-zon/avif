@@ -1,0 +1,8 @@
+#!/bin/sh
+ZIG_VERSION=$(perl -ne 'print $& if /\.\s*minimum_zig_version\s*=\s*"\K[^"]+/' src/build.zig.zon)
+ZIG_ARCH=$(uname -m)
+
+mkdir -p /opt/zig
+curl -s "https://ziglang.org/download/${ZIG_VERSION}/zig-${ZIG_ARCH}-linux-${ZIG_VERSION}.tar.xz" | tar xJf - --strip-components=1 -C /opt/zig
+
+ln -s /opt/zig/zig /usr/local/bin
