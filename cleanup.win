@@ -1,2 +1,2 @@
 #!/bin/sh
-rm -rf src/.zig-cache
+rm -f src/Makefile.win

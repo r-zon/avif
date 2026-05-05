@@ -5,3 +5,5 @@ zig-pkg/
 *.o
 *.so
 *.dll
+/src/Makefile
+/src/Makefile.win

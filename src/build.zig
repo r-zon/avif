@@ -77,7 +77,27 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("build.zig.zon"),
     });
 
-    const shlib_ext = b.graph.environ_map.get("SHLIB_EXT") orelse "";
+    const shlib_ext = b.graph.environ_map.get("SHLIB_EXT") orelse if (target.result.os.tag == .windows) ".dll" else ".so";
     const install_lib = b.addInstallFile(lib.getEmittedBin(), b.fmt("{s}{s}", .{ lib.name, shlib_ext }));
     b.getInstallStep().dependOn(&install_lib.step);
+
+    const makefile = b.addConfigHeader(
+        .{ .style = .{ .autoconf_at = b.path("Makefile.in") } },
+        .{
+            .zig_jobs = b.graph.environ_map.get("ZIG_JOBS") orelse "1",
+            .zig_cpu = b.graph.environ_map.get("ZIG_CPU") orelse "baseline",
+            .zig_optimize = b.graph.environ_map.get("ZIG_OPTIMIZE") orelse "ReleaseFast",
+            .zig_strip = b.graph.environ_map.get("ZIG_STRIP") orelse "false",
+        },
+    );
+    // Fix auto-generated comments
+    const run_sed = b.addSystemCommand(&.{ "sed", "1s/^./#/" });
+    run_sed.addFileArg(makefile.getOutputFile());
+    const install_makefile = b.addInstallFile(
+        run_sed.captureStdOut(.{}),
+        if (target.result.os.tag == .windows) "Makefile.win" else "Makefile",
+    );
+
+    const configure_step = b.step("configure", "Configure the package");
+    configure_step.dependOn(&install_makefile.step);
 }

@@ -1,0 +1,4 @@
+all:
+	zig build -p . -j@zig_jobs@ -Dcpu=@zig_cpu@ -Doptimize=@zig_optimize@ -Dstrip=@zig_strip@
+clean:
+	rm -rf .zig-cache
