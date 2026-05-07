@@ -4,5 +4,7 @@
 (?:^|/)\.jj$
 (?:^|/)\.github$
 \.tar\.gz$
+\.so$
+\.dll$
 ^LICENSE\.txt$
 ^\.prepare$
