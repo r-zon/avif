@@ -42,16 +42,7 @@ read_avif <- function(
   arguments$native_raster <- native_raster
   arguments$codec <- codec
 
-  img <- .Call(AVIF_read_avif, source, ptype, arguments)
-  if (native_raster) {
-    return(img)
-  }
-  depth <- attr(img, "depth")
-  img <- aperm(img)
-  attr(img, "depth") <- depth
-  attr(img, "normalized") <- normalize
-  class(img) <- c("avif", class(img))
-  img
+  .Call(AVIF_read_avif, source, ptype, arguments)
 }
 
 #' Write an AVIF Image
@@ -96,10 +87,6 @@ write_avif <- function(
   arguments$alpha_quality <- alpha_quality
   arguments$format <- format
   arguments$codec <- codec
-
-  depth <- attr(image, "depth")
-  image <- aperm(image)
-  attr(image, "depth") <- depth
 
   bytes <- .Call(AVIF_write_avif, image, target, arguments)
   if (is.null(target)) {

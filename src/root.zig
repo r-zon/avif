@@ -6,7 +6,7 @@ const utils = @import("utils.zig");
 const init = @import("root");
 
 const copyAny = utils.copy;
-const copyTruncate = utils.copyTruncate;
+const copyInv = utils.copyInv;
 const copyFromLut = utils.copyFromLut;
 
 const PixelType = enum {
@@ -133,7 +133,8 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
         r.err("Convert from YUV failed: %s", avif.resultToString(result));
 
     const channel_count = rgb.channelCount();
-    log.debug("width={d} height={d} channel_count={d}", .{ width, height, channel_count });
+    const extent: utils.Extent = .{ .width = width, .height = height, .channel = channel_count };
+    log.debug("extent={}", .{extent});
     switch (channel_count) {
         3, 4 => {},
         else => r.err("Unsupported channel count: %d", channel_count),
@@ -177,27 +178,27 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
 
     const pixels_u16: []u16 = @ptrCast(@alignCast(pixels_u8));
     blk: switch (out_type) {
-        .raw => @memcpy(out.raw(), pixels_u8),
+        .raw => copyAny(.to_r, out.raw(), pixels_u8, extent, .none),
         .integer => {
             const buf = out.integer()[0..total_size];
             if (pixel_type == .u16)
-                copyAny(buf, pixels_u16)
+                copyAny(.to_r, buf, pixels_u16, extent, .none)
             else
-                copyAny(buf, pixels_u8);
+                copyAny(.to_r, buf, pixels_u8, extent, .none);
         },
         .real => {
             const buf = out.real()[0..total_size];
 
             if (!normalize) {
                 if (pixel_type == .u8)
-                    copyAny(buf, pixels_u8)
+                    copyAny(.to_r, buf, pixels_u8, extent, .none)
                 else
-                    copyAny(buf, pixels_u16);
+                    copyAny(.to_r, buf, pixels_u16, extent, .none);
                 break :blk;
             }
 
             if (pixel_type == .u8)
-                break :blk copyFromLut(u8)(buf, pixels_u8);
+                break :blk copyFromLut(u8)(buf, pixels_u8, extent);
 
             const copy = switch (depth) {
                 10 => copyFromLut(u10),
@@ -206,11 +207,10 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
                 else => break :blk {
                     const max_int: f64 = (@as(u6, 1) << @intCast(depth)) - 1;
                     const inv: f64 = 1.0 / max_int;
-                    for (buf, pixels_u16) |*i, j|
-                        i.* = j * inv;
+                    copyInv(buf, pixels_u16, extent, inv);
                 },
             };
-            copy(buf, pixels_u16);
+            copy(buf, pixels_u16, extent);
         },
         // Checked before
         else => unreachable,
@@ -218,13 +218,19 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
 
     const dim = r.allocVector(.integer, 3, .protected);
     defer r.unprotect(1);
-    inline for (dim.integer(), .{ channel_count, width, height }) |*i, j|
+    inline for (dim.integer(), .{ height, width, channel_count }) |*i, j|
         i.* = @intCast(j);
     _ = r.setAttribute(out, .dim, dim);
 
     const depth_sexp = r.allocScalar(.integer, @intCast(depth), .protected);
     defer r.unprotect(1);
     _ = r.setAttribute(out, .{ .custom = r.install("depth") }, depth_sexp);
+
+    const normalized = r.allocScalar(.logical, @intFromBool(normalize), .protected);
+    defer r.unprotect(1);
+    _ = r.setAttribute(out, .{ .custom = r.install("normalized") }, normalized);
+
+    _ = r.setAttribute(out, .class, r.makeString("avif"));
 
     return out;
 }
@@ -311,11 +317,12 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp 
         else => |f| r.err("Invalid argument format=%d, format must be 444, 422, 420 or 400", f),
     };
 
-    const channel_count: u32, const width: u32, const height: u32 = blk: {
+    const height: u32, const width: u32, const channel_count: u32 = blk: {
         const int = src_dim.integer();
         break :blk .{ @intCast(int[0]), @intCast(int[1]), @intCast(int[2]) };
     };
-    log.debug("width={d} height={d} channel_count={d}", .{ width, height, channel_count });
+    const extent: utils.Extent = .{ .width = width, .height = height, .channel = channel_count };
+    log.debug("extent={}", .{extent});
 
     var image = avif.Image.initWithOptions(.{
         .width = width,
@@ -341,16 +348,16 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp 
     const pixel_type: PixelType = if (src_depth > 8) .u16 else .u8;
     log.debug("pixel_type={t}", .{pixel_type});
     if (src_type == .raw)
-        @memcpy(rgb.inner.pixels, src.raw()[0..@intCast(src.len())])
+        copyAny(.from_r, rgb.inner.pixels, src.raw()[0..@intCast(src.len())], extent, .none)
     else {
         const src_uint: []c_uint = @ptrCast(src.integer()[0..@intCast(src.len())]);
         if (pixel_type == .u8) {
-            copyTruncate(rgb.inner.pixels, src_uint);
+            copyAny(.from_r, rgb.inner.pixels, src_uint, extent, .truncate);
         } else {
             const plane_size = width * height;
             const out_size = plane_size * channel_count;
             const pixels_u16: []u16 = @ptrCast(@alignCast(rgb.inner.pixels[0 .. out_size * 2]));
-            copyTruncate(pixels_u16, src_uint);
+            copyAny(.from_r, pixels_u16, src_uint, extent, .truncate);
         }
     }
 
