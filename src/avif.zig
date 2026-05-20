@@ -155,8 +155,10 @@ pub const RgbImage = extern struct {
     }
 };
 
-pub fn codecName(codec: c.avifCodecChoice, flags: c.avifCodecFlags) [:0]const u8 {
-    return std.mem.sliceTo(c.avifCodecName(codec, flags), 0);
+pub fn codecName(codec: c.avifCodecChoice, flags: c.avifCodecFlags) ?[:0]const u8 {
+    if (c.avifCodecName(codec, flags)) |name|
+        return std.mem.sliceTo(name, 0);
+    return null;
 }
 
 pub const resultToString = c.avifResultToString;

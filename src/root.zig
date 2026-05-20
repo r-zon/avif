@@ -66,13 +66,20 @@ pub fn readAvif(src: r.Sexp, proto: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp {
     const decoder = avif.Decoder.init() catch |e|
         r.err("Init decoder failed: %s", @errorName(e).ptr);
     defer decoder.deinit();
-    if (options.codec) |codec|
-        decoder.ptr.codecChoice = avif.codecChoiceFromName(codec);
-    const codec = avif.codecName(decoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_DECODE);
+    if (options.codec) |opt| blk: {
+        const choice = avif.codecChoiceFromName(opt);
+        const name = avif.codecName(choice, c.AVIF_CODEC_FLAG_CAN_DECODE);
+        if (name) |codec| {
+            if (std.mem.eql(u8, codec, opt)) {
+                decoder.ptr.codecChoice = choice;
+                break :blk;
+            }
+        }
+        const fallback = avif.codecName(decoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_DECODE).?;
+        r.warn("Unknown codec `%s` for decoding. Fallback to `%s`.", opt.ptr, fallback.ptr);
+    }
+    const codec = avif.codecName(decoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_DECODE).?;
     log.debug("codec={s}", .{codec});
-    if (options.codec) |cc|
-        if (!std.mem.eql(u8, codec, cc))
-            r.warn("Unknown codec `%s` for decoding. Fallback to `%s`.", cc.ptr, codec.ptr);
 
     decoder.ptr.maxThreads = jobs;
 
@@ -367,13 +374,20 @@ pub fn writeAvif(src: r.Sexp, target: r.Sexp, args: r.Sexp) callconv(.c) r.Sexp 
     var encoder = avif.Encoder.init() catch |e|
         r.err("Init encoder failed: %s", @errorName(e).ptr);
     defer encoder.deinit();
-    if (options.codec) |codec|
-        encoder.ptr.codecChoice = avif.codecChoiceFromName(codec);
-    const codec = avif.codecName(encoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_ENCODE);
+    if (options.codec) |opt| blk: {
+        const choice = avif.codecChoiceFromName(opt);
+        const name = avif.codecName(choice, c.AVIF_CODEC_FLAG_CAN_ENCODE);
+        if (name) |codec| {
+            if (std.mem.eql(u8, codec, opt)) {
+                encoder.ptr.codecChoice = choice;
+                break :blk;
+            }
+        }
+        const fallback = avif.codecName(encoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_ENCODE).?;
+        r.warn("Unknown codec %s for encoding. Fallback to %s.", opt.ptr, fallback.ptr);
+    }
+    const codec = avif.codecName(encoder.ptr.codecChoice, c.AVIF_CODEC_FLAG_CAN_ENCODE).?;
     log.debug("codec={s}", .{codec});
-    if (options.codec) |cc|
-        if (!std.mem.eql(u8, codec, cc))
-            r.warn("Unknown codec %s for encoding. Fallback to %s.", cc.ptr, codec.ptr);
 
     encoder.ptr.maxThreads = jobs;
     encoder.ptr.speed = speed;
